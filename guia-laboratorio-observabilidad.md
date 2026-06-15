@@ -19,12 +19,12 @@ Al terminar este laboratorio serás capaz de:
 
 ## 2. Contexto: ¿por qué este stack?
 
-En infraestructura como código no basta con *desplegar* servicios: también necesitamos *observarlos*, y esa observación debe ser reproducible. Por eso todo el stack de monitoreo se define en archivos versionables (`docker-compose.yml` y archivos de configuración) en lugar de configurarse a mano.
+En infraestructura como código no basta con _desplegar_ servicios: también necesitamos _observarlos_, y esa observación debe ser reproducible. Por eso todo el stack de monitoreo se define en archivos versionables (`docker-compose.yml` y archivos de configuración) en lugar de configurarse a mano.
 
 La observabilidad se apoya en dos señales distintas que requieren herramientas distintas:
 
-- **Métricas** (números en el tiempo: % de CPU, memoria, peticiones por segundo). Las recolecta y almacena **Prometheus**. Los valores los exponen *exporters*: **node-exporter** (CPU/memoria del host) y **cAdvisor** (recursos por contenedor). Las aplicaciones también exponen sus propias métricas en `/metrics`.
-- **Logs** (líneas de texto: eventos, errores, trazas). Prometheus *no* sirve para esto. Los almacena **Loki**, y quien recoge los logs de cada contenedor y se los envía es **Grafana Alloy** (el recolector que reemplazó a Promtail, en fin de vida desde marzo de 2026).
+- **Métricas** (números en el tiempo: % de CPU, memoria, peticiones por segundo). Las recolecta y almacena **Prometheus**. Los valores los exponen _exporters_: **node-exporter** (CPU/memoria del host) y **cAdvisor** (recursos por contenedor). Las aplicaciones también exponen sus propias métricas en `/metrics`.
+- **Logs** (líneas de texto: eventos, errores, trazas). Prometheus _no_ sirve para esto. Los almacena **Loki**, y quien recoge los logs de cada contenedor y se los envía es **Grafana Alloy** (el recolector que reemplazó a Promtail, en fin de vida desde marzo de 2026).
 
 Finalmente, **Grafana** es la capa de visualización: se conecta tanto a Prometheus como a Loki, dibuja los dashboards y gestiona las alarmas.
 
@@ -94,12 +94,12 @@ docker compose ps
 
 Comprueba en el navegador que responden los servicios principales:
 
-| Servicio   | URL                       | Qué deberías ver                        |
-|------------|---------------------------|-----------------------------------------|
-| Frontend   | http://localhost:8080     | Página "Hello World" con dos botones    |
+| Servicio   | URL                           | Qué deberías ver                        |
+| ---------- | ----------------------------- | --------------------------------------- |
+| Frontend   | http://localhost:8080         | Página "Hello World" con dos botones    |
 | Backend    | http://localhost:3001/metrics | Texto de métricas en formato Prometheus |
-| Grafana    | http://localhost:3000     | Login (usuario `admin`, clave `admin`)  |
-| Prometheus | http://localhost:9090     | Interfaz de Prometheus                   |
+| Grafana    | http://localhost:3000         | Login (usuario `admin`, clave `admin`)  |
+| Prometheus | http://localhost:9090         | Interfaz de Prometheus                  |
 
 > Si algún servicio no responde, revisa la sección **9. Solución de problemas**.
 
@@ -123,7 +123,7 @@ Las fuentes de datos ya están **aprovisionadas como código**, así que no hay 
 
 1. Entra a Grafana (http://localhost:3000) con `admin` / `admin`.
 2. Ve a **Connections → Data sources**.
-3. Confirma que existen **Prometheus** y **Loki**, ambos en estado correcto (puedes usar el botón *Test* / *Save & test*).
+3. Confirma que existen **Prometheus** y **Loki**, ambos en estado correcto (puedes usar el botón _Test_ / _Save & test_).
 
 > ¿Por qué ya están ahí? Porque se definieron en un archivo de provisioning que Grafana lee al arrancar. Eso es infraestructura como código: la configuración no depende de que alguien recuerde hacer clic.
 
@@ -139,14 +139,21 @@ Crea un nuevo dashboard: **Dashboards → New → New dashboard → Add visualiz
 2. En el editor de consulta, escribe esta expresión PromQL:
 
    ```
-   sum(rate(container_cpu_usage_seconds_total{name="lab-backend"}[1m])) * 100
+   rate(backend_process_cpu_seconds_total[1m]) * 100
    ```
 
-   Devuelve el % de CPU que consume el contenedor del backend (100 ≈ un núcleo completo).
+   Devuelve el % de CPU que consume el proceso del backend (100 ≈ un núcleo completo).
+
+   > **Correccion:** en Docker Desktop (Windows/Mac), cAdvisor no puede identificar los
+   > contenedores individuales (por su VM interna),
+   > por lo que `container_cpu_usage_seconds_total{name="lab-backend"}`
+   > no devuelve datos. Usamos en su lugar la métrica de proceso que expone el
+   > propio backend vía `prom-client`.
+
 3. Tipo de visualización: **Time series**.
 4. En **Standard options → Unit**, elige **Percent (0–100)**.
 5. (Recomendado) En **Thresholds**, añade un umbral en `50` con color rojo: así verás visualmente cuándo se cruza el límite.
-6. Título del panel: *"CPU contenedor backend (%)"*. Guarda con **Apply**.
+6. Título del panel: _"CPU contenedor backend (%)"_. Guarda con **Apply**.
 
 ### 8.2 Panel: CPU del host (infraestructura)
 
@@ -156,7 +163,7 @@ Crea otro panel con fuente **Prometheus** y la consulta:
 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)
 ```
 
-Unidad **Percent (0–100)**, título *"CPU del host (%)"*. Este panel representa la métrica de infraestructura general (la máquina), frente al panel anterior que es por contenedor.
+Unidad **Percent (0–100)**, título _"CPU del host (%)"_. Este panel representa la métrica de infraestructura general (la máquina), frente al panel anterior que es por contenedor.
 
 ### 8.3 Panel: Logs de aplicación (API + frontend)
 
@@ -170,12 +177,14 @@ Unidad **Percent (0–100)**, título *"CPU del host (%)"*. Este panel represent
 
    - `tier="application"` trae solo los logs del backend y del frontend.
    - `| json` parsea los campos del log (level, service, msg, etc.) para poder filtrarlos.
+
 4. Prueba a filtrar por nivel; por ejemplo, solo errores:
 
    ```
    {tier="application"} | json | level="ERROR"
    ```
-5. Título: *"Logs de aplicación (API + frontend)"*.
+
+5. Título: _"Logs de aplicación (API + frontend)"_.
 
 ### 8.4 Panel: Logs de infraestructura
 
@@ -185,11 +194,11 @@ Repite con fuente **Loki**, tipo **Logs**, y la consulta:
 {tier="infrastructure"}
 ```
 
-Esto muestra los logs de los componentes del stack (Prometheus, Loki, Grafana, exporters…). Título: *"Logs de infraestructura"*.
+Esto muestra los logs de los componentes del stack (Prometheus, Loki, Grafana, exporters…). Título: _"Logs de infraestructura"_.
 
 ### 8.5 Guardar
 
-Pulsa **Save dashboard** (arriba a la derecha) y ponle un nombre, por ejemplo *"Observabilidad — \<tu nombre\>"*.
+Pulsa **Save dashboard** (arriba a la derecha) y ponle un nombre, por ejemplo _"Observabilidad — \<tu nombre\>"_.
 
 > En este punto tu dashboard ya distingue métricas de contenedor vs host y logs de aplicación vs infraestructura. Ese es el entregable de visualización.
 
@@ -204,15 +213,15 @@ Usaremos las **alarmas de Grafana** (Grafana Alerting).
 3. **Define query and alert condition:**
    - Query **A**, fuente **Prometheus**:
      ```
-     sum(rate(container_cpu_usage_seconds_total{name="lab-backend"}[1m])) * 100
+     rate(backend_process_cpu_seconds_total[1m]) * 100
      ```
    - En la sección de condición, Grafana añade por defecto una expresión **Reduce** (función `Last`) y una expresión **Threshold**. En el **Threshold**, configura **IS ABOVE `50`**. Esa es la condición de alerta.
 4. **Evaluation behavior:**
-   - Crea (o elige) una carpeta y un *evaluation group* con intervalo de evaluación de `10s`.
-   - **Pending period:** `30s` (la métrica debe mantenerse sobre 50% durante 30s antes de pasar a *Firing*; evita falsas alarmas por picos cortos).
+   - Crea (o elige) una carpeta y un _evaluation group_ con intervalo de evaluación de `10s`.
+   - **Pending period:** `30s` (la métrica debe mantenerse sobre 50% durante 30s antes de pasar a _Firing_; evita falsas alarmas por picos cortos).
 5. **Configure labels and notifications:**
    - Añade una etiqueta `severity = warning`.
-   - Como **contact point**, puedes dejar el `grafana-default-email` para esta práctica: bastará con ver el cambio de estado a *Firing*.
+   - Como **contact point**, puedes dejar el `grafana-default-email` para esta práctica: bastará con ver el cambio de estado a _Firing_.
 6. Guarda con **Save rule and exit**.
 
 ---
@@ -220,7 +229,7 @@ Usaremos las **alarmas de Grafana** (Grafana Alerting).
 ## 10. Paso 6 — Probar la alarma
 
 1. En el frontend (http://localhost:8080) pulsa **"Generar carga de CPU (30s)"**.
-   *(Alternativa por terminal: `curl "http://localhost:3001/load?seconds=60"`.)*
+   _(Alternativa por terminal: `curl "http://localhost:3001/load?seconds=60"`.)_
 2. Observa el **panel de CPU del backend**: debe subir y superar el 50%.
 3. Ve a **Alerting → Alert rules** y observa cómo la regla pasa de `Normal` → `Pending` → `Firing`.
 4. Cuando termine la carga, la métrica baja y la alarma vuelve a `Normal`.
@@ -237,19 +246,19 @@ Configura un **contact point** de tipo **Webhook** apuntando a `http://backend:3
 
 ## 12. Entregables y criterios de evaluación
 
-| Criterio | Puntos |
-|---|---|
-| Stack levantado y todos los servicios accesibles | 2 |
-| Dashboard con panel de CPU por contenedor (con umbral en 50%) | 5 |
-| Dashboard con panel de CPU del host | 3 |
-| Panel de logs de aplicación funcionando (filtro por nivel) | 2 |
-| Panel de logs de infraestructura funcionando | 2 |
-| Alarma de CPU > 50% configurada correctamente | 2 |
-| Evidencia de la alarma en estado *Firing* tras generar carga | 2 |
-| Ciclo cerrado alarma → log vía webhook | 2 |
-| **Total** | **20** |
+| Criterio                                                      | Puntos |
+| ------------------------------------------------------------- | ------ |
+| Stack levantado y todos los servicios accesibles              | 2      |
+| Dashboard con panel de CPU por contenedor (con umbral en 50%) | 5      |
+| Dashboard con panel de CPU del host                           | 3      |
+| Panel de logs de aplicación funcionando (filtro por nivel)    | 2      |
+| Panel de logs de infraestructura funcionando                  | 2      |
+| Alarma de CPU > 50% configurada correctamente                 | 2      |
+| Evidencia de la alarma en estado _Firing_ tras generar carga  | 2      |
+| Ciclo cerrado alarma → log vía webhook                        | 2      |
+| **Total**                                                     | **20** |
 
-Entrega: capturas de pantalla del dashboard y de la alarma en *Firing*, más una breve explicación (5–8 líneas) de qué hace cada componente del stack.
+Entrega: capturas de pantalla del dashboard y de la alarma en _Firing_, más una breve explicación (5–8 líneas) de qué hace cada componente del stack.
 
 ---
 
@@ -258,14 +267,14 @@ Entrega: capturas de pantalla del dashboard y de la alarma en *Firing*, más una
 1. ¿Por qué necesitamos Loki además de Prometheus si ya tenemos `/metrics`?
 2. ¿Qué ventaja aporta que las fuentes de datos de Grafana estén aprovisionadas como código y no creadas a mano?
 3. El panel "CPU contenedor" y el panel "CPU host" pueden mostrar valores muy distintos. ¿Por qué? ¿Cuál usarías para alertar sobre una aplicación concreta?
-4. ¿Qué diferencia hay entre el *evaluation interval* y el *pending period* de una alarma?
+4. ¿Qué diferencia hay entre el _evaluation interval_ y el _pending period_ de una alarma?
 
 ---
 
 ## 14. Solución de problemas
 
 - **Un servicio no levanta:** mira sus logs con `docker compose logs <servicio>` (por ejemplo `docker compose logs grafana`).
-- **No aparecen métricas en Prometheus:** entra a http://localhost:9090/targets y verifica que todos los *targets* estén `UP`.
+- **No aparecen métricas en Prometheus:** entra a http://localhost:9090/targets y verifica que todos los _targets_ estén `UP`.
 - **No aparecen logs en Loki:** revisa el estado de Alloy en http://localhost:12345 y que el contenedor tenga acceso al socket de Docker.
 - **La alarma no se dispara:** confirma que la consulta usa `name="lab-backend"` (el nombre exacto del contenedor) y que realmente generaste carga.
 - **Empezar de cero:** `docker compose down -v` borra datos, dashboards y alarmas creados.
